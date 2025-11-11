@@ -7,6 +7,7 @@ function(fetch_and_build_microhs MICROHS_BIN MICROHS_SRC_DIR)
 
     ExternalProject_Add(MicroHsProject
         URL ${MICROHS_URL}
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         PREFIX ${MICROHS_PREFIX}
         CONFIGURE_COMMAND ""  # skip configuration
         BUILD_COMMAND make -C <SOURCE_DIR> bin/mhs
