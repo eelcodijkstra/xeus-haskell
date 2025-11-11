@@ -1,2 +1,2 @@
 #!/bin/bash
-docker run --rm -i -v "$(pwd):/work" xeus-haskell "cd /tmp && ctest ."
+docker run --rm -i -v "$(pwd):/work" xeus-haskell "cd /tmp && ctest --output-on-failure ."
