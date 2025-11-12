@@ -5,11 +5,11 @@ function(fetch_and_build_microhs MICROHS_BIN MICROHS_SRC_DIR)
     set(MICROHS_URL "https://github.com/augustss/MicroHs/archive/refs/tags/${MICROHS_VERSION}.tar.gz")
     set(MICROHS_PREFIX "${CMAKE_BINARY_DIR}/microhs")
     if(WIN32)
-      set(MICROHS_MHS_FILE "Makefile.windows")
-      set(MICROHS_MHS_BIN "bin/mhs.exe")
+      set(MICROHS_MAKEFILE "Makefile.windows")
+      set(MICROHS_SUFFIX ".exe")
     else()
       set(MICROHS_MAKEFILE "Makefile")
-      set(MICROHS_MHS_BIN "bin/mhs")
+      set(MICROHS_SUFFIX "")
     endif()
 
     ExternalProject_Add(MicroHsProject
@@ -18,13 +18,13 @@ function(fetch_and_build_microhs MICROHS_BIN MICROHS_SRC_DIR)
         BUILD_IN_SOURCE TRUE
         PREFIX ${MICROHS_PREFIX}
         CONFIGURE_COMMAND ""
-        BUILD_COMMAND make -f ${MICROHS_MAKEFILE} ${MICROHS_MHS_BIN}
+        BUILD_COMMAND make -f ${MICROHS_MAKEFILE}
         INSTALL_COMMAND ""
     )
 
     ExternalProject_Get_Property(MicroHsProject SOURCE_DIR)
     set(${MICROHS_SRC_DIR} ${SOURCE_DIR} PARENT_SCOPE)
-    set(${MICROHS_BIN} "${SOURCE_DIR}/${MICROHS_MHS_BIN}" PARENT_SCOPE)
+    set(${MICROHS_BIN} "${SOURCE_DIR}/bin/mhs${MICROHS_SUFFIX}" PARENT_SCOPE)
 endfunction()
 
 function(build_and_install_libmhs MICROHS_BIN MICROHS_SRC_DIR)
