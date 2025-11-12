@@ -32,6 +32,7 @@ endfunction()
 function(build_and_install_libmhs MICROHS_BIN MICROHS_SRC_DIR)
     set(OUTPUT_HEADER "${CMAKE_CURRENT_BINARY_DIR}/Repl_stub.h")
     set(REPL_C "${CMAKE_CURRENT_BINARY_DIR}/Repl.c")
+    set(EVAL_C "${MICROHS_SRC_DIR}/src/runtime/eval.c")
     set(REPL_O "${CMAKE_CURRENT_BINARY_DIR}/Repl.o")
     set(EVAL_O "${CMAKE_CURRENT_BINARY_DIR}/eval.o")
 
@@ -59,37 +60,31 @@ function(build_and_install_libmhs MICROHS_BIN MICROHS_SRC_DIR)
         VERBATIM
     )
 
-    add_custom_command(
-        OUTPUT ${EVAL_O}
-        DEPENDS ${REPL_C}
-        COMMAND ${CMAKE_C_COMPILER} -w -Wall -O3 -c
-                -I${MICROHS_SRC_DIR}/src/runtime
-                -I${MICROHS_OS_RUNTIME_DIR}
-                -D__MHS__
-                ${MICROHS_SRC_DIR}/src/runtime/eval.c
-                -o ${EVAL_O}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        VERBATIM
+    add_library(repl_obj OBJECT ${REPL_C})
+    add_dependencies(repl_obj MicroHsProject)
+    target_include_directories(repl_obj PRIVATE
+      ${MICROHS_SRC_DIR}/src/runtime
+      ${MICROHS_OS_RUNTIME_DIR}
+      ${CMAKE_BINARY_DIR}
     )
+    target_compile_definitions(repl_obj PRIVATE __MHS__)
 
-    add_custom_command(
-        OUTPUT ${REPL_O}
-        DEPENDS ${REPL_C}
-        COMMAND ${CMAKE_C_COMPILER} -w -Wall -O3 -c
-                -I${MICROHS_SRC_DIR}/src/runtime
-                -I${MICROHS_OS_RUNTIME_DIR}
-                -D__MHS__
-                ${REPL_C}
-                -o ${REPL_O}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        VERBATIM
+    add_library(eval_obj OBJECT ${EVAL_C})
+    set_source_files_properties(${EVAL_C} PROPERTIES GENERATED TRUE)
+    add_dependencies(eval_obj MicroHsProject)
+    target_include_directories(eval_obj PRIVATE
+      ${MICROHS_SRC_DIR}/src/runtime
+      ${MICROHS_OS_RUNTIME_DIR}
+      ${CMAKE_BINARY_DIR}
     )
+    target_compile_definitions(eval_obj PRIVATE __MHS__)
 
-    add_library(mhs_obj STATIC ${REPL_O} ${EVAL_O})
+    add_library(mhs_obj STATIC
+        $<TARGET_OBJECTS:repl_obj>
+        $<TARGET_OBJECTS:eval_obj>
+    )
     add_dependencies(mhs_obj MicroHsProject)
 
     set(MHS_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR} PARENT_SCOPE)
     set(MHS_OBJ mhs_obj PARENT_SCOPE)
-    set_source_files_properties(${REPL_O} ${EVAL_O} PROPERTIES GENERATED TRUE)
-    set_target_properties(mhs_obj PROPERTIES LINKER_LANGUAGE C)
 endfunction()
