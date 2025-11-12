@@ -57,21 +57,89 @@ bool is_definition(std::string_view code) {
 
 std::string capture_stdout(std::function<void()> fn) {
 #ifdef _WIN32
-    // Windows implementation
+    // Windows implementation (Fixed to capture Win32 and C runtime stdout)
     HANDLE hRead, hWrite;
     SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
-    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) return "";
 
-    // Save original stdout
+    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
+        throw std::runtime_error("Failed to create pipe");
+    }
+
+    // Duplicate the write handle for the C runtime
+    HANDLE hWriteDup;
+    if (!DuplicateHandle(GetCurrentProcess(), hWrite, GetCurrentProcess(), &hWriteDup, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+        CloseHandle(hRead);
+        CloseHandle(hWrite);
+        throw std::runtime_error("Failed to duplicate write handle");
+    }
+
+    // Save original stdout handles (both Win32 and C runtime)
     HANDLE hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    fflush(stdout);
-    SetStdHandle(STD_OUTPUT_HANDLE, hWrite);
+    int stdout_fd = _dup(1); // Save original C runtime stdout (FD 1)
+    if (stdout_fd == -1) {
+         throw std::runtime_error("Failed to dup original stdout");
+    }
 
-    fn();  // run the function (it writes to stdout)
+    // Create a C runtime file descriptor for the duplicated pipe handle
+    int pipe_fd = _open_osfhandle((intptr_t)hWriteDup, _O_TEXT);
+    if (pipe_fd == -1) {
+        _close(stdout_fd);
+        CloseHandle(hRead);
+        CloseHandle(hWrite);
+        throw std::runtime_error("Failed to open osfhandle");
+    }
 
-    // Restore stdout
+    fflush(stdout); // Flush any existing buffers
+
+    // 1. Redirect Win32 stdout
+    if (!SetStdHandle(STD_OUTPUT_HANDLE, hWrite)) {
+        _close(pipe_fd);
+        _close(stdout_fd);
+        CloseHandle(hRead);
+        CloseHandle(hWrite);
+        throw std::runtime_error("Failed to set std handle");
+    }
+
+    // 2. Redirect C runtime stdout
+    if (_dup2(pipe_fd, 1) == -1) {
+        // Restore Win32 handle before throwing
+        SetStdHandle(STD_OUTPUT_HANDLE, hStdout);
+        _close(pipe_fd);
+        _close(stdout_fd);
+        CloseHandle(hRead);
+        CloseHandle(hWrite);
+        throw std::runtime_error("Failed to dup2 stdout");
+    }
+
+    // We've duplicated pipe_fd onto 1, so we can close the original
+    // This also closes the underlying hWriteDup handle
+    _close(pipe_fd);
+
+    try {
+        fn();  // run the function
+    } catch (...) {
+        // Restore stdouts before re-throwing
+        fflush(stdout);
+        _dup2(stdout_fd, 1);
+        _close(stdout_fd);
+        SetStdHandle(STD_OUTPUT_HANDLE, hStdout);
+        CloseHandle(hWrite);
+        CloseHandle(hRead);
+        throw; // Re-throw the original exception
+    }
+
+    // Restore original stdouts
     fflush(stdout);
+
+    // 1. Restore C runtime stdout
+    _dup2(stdout_fd, 1);
+    _close(stdout_fd);
+
+    // 2. Restore Win32 stdout
     SetStdHandle(STD_OUTPUT_HANDLE, hStdout);
+
+    // Close the Win32 pipe write handle.
+    // Reading can now begin.
     CloseHandle(hWrite);
 
     // Read from pipe
