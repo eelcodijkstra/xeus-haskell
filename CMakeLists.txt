@@ -54,7 +54,6 @@ OPTION(XEUS_HASKELL_BUILD_EXECUTABLE "Build the xhaskell executable" ON)
 OPTION(XEUS_HASKELL_USE_SHARED_XEUS "Link xhaskell  with the xeus shared library (instead of the static library)" ON)
 OPTION(XEUS_HASKELL_USE_SHARED_XEUS_HASKELL "Link xhaskell  with the xeus shared library (instead of the static library)" ON)
 
-
 if(EMSCRIPTEN)
     add_compile_definitions(XEUS_HASKELL_EMSCRIPTEN_WASM_BUILD)
     message("Build with emscripten")
@@ -66,10 +65,8 @@ if(EMSCRIPTEN)
     SET(XEUS_HASKELL_BUILD_TESTS OFF)
 endif()
 
-
 # Dependencies
 # ============
-
 
 set(xeus_REQUIRED_VERSION "5.0.0" CACHE STRING "Minimum xeus version required to build xeus-haskell")
 
@@ -88,7 +85,6 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU"
     if(NOT EMSCRIPTEN)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wunused-parameter -Wextra -Wreorder")
     endif()
-    
 
     CHECK_CXX_COMPILER_FLAG("-std=c++17" HAS_CPP_17_FLAG)
     if (HAS_CPP_17_FLAG)
@@ -102,7 +98,6 @@ if(EMSCRIPTEN)
     # ENV (https://github.com/emscripten-core/emscripten/commit/6d9681ad04f60b41ef6345ab06c29bbc9eeb84e0)
     set(EMSCRIPTEN_FEATURES "${EMSCRIPTEN_FEATURES} -s \"EXTRA_EXPORTED_RUNTIME_METHODS=['ENV']\"")
 endif()
-
 
 # Source files
 # ============
@@ -120,6 +115,36 @@ set(XEUS_HASKELL_MAIN_SRC
     src/main.cpp
 )
 
+# MicroHs / mhs_repl integration
+# ==============================
+
+include(MicroHs)
+fetch_and_build_microhs(MICROHS_BIN MICROHS_SRC_DIR)
+build_and_install_libmhs(${MICROHS_BIN} ${MICROHS_SRC_DIR})
+
+add_library(mhs_repl_lib STATIC
+    src/mhs_repl.cpp
+)
+
+add_dependencies(mhs_repl_lib mhs_obj)
+
+target_include_directories(mhs_repl_lib
+    PUBLIC
+        ${MHS_INCLUDE_DIR}
+        ${XEUS_HASKELL_INCLUDE_DIR}
+)
+
+target_compile_definitions(mhs_repl_lib
+    PUBLIC MICROHS_RUNTIME_DIR="${MICROHS_SRC_DIR}"
+)
+
+target_link_libraries(mhs_repl_lib
+    PUBLIC ${MHS_OBJ}
+)
+
+if(EMSCRIPTEN)
+    target_compile_options(mhs_repl_lib PRIVATE -fPIC)
+endif()
 
 # Targets and link - Macros
 # =========================
@@ -182,7 +207,6 @@ macro(xeus_haskell_set_kernel_options target_name)
         find_package(Threads)
         target_link_libraries(${target_name} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
     endif()
-    
 endmacro()
 
 # Common macro for shared and static library
@@ -219,6 +243,9 @@ macro(xeus_haskell_create_target target_name linkage output_name)
     endif ()
 
     target_link_libraries(${target_name} PUBLIC ${XEUS_HASKELL_XEUS_TARGET})
+
+    target_link_libraries(${target_name} PUBLIC mhs_repl_lib)
+
     if (WIN32 OR CYGWIN)
         #
     elseif (APPLE)
@@ -228,7 +255,6 @@ macro(xeus_haskell_create_target target_name linkage output_name)
         find_package(Threads) # TODO: add Threads as a dependence of xeus-static?
         target_link_libraries(${target_name} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
     endif()
-    
 endmacro()
 
 # xeus-haskell
@@ -256,7 +282,7 @@ if (XEUS_HASKELL_BUILD_STATIC)
     list(APPEND XEUS_HASKELL_TARGETS xeus-haskell-static)
 endif ()
 
-# xhaskell
+# xhaskell (native)
 # =======
 if (XEUS_HASKELL_BUILD_EXECUTABLE)
     find_package(xeus-zmq 1.0.2 REQUIRED)
@@ -265,19 +291,21 @@ if (XEUS_HASKELL_BUILD_EXECUTABLE)
     xeus_haskell_set_common_options(xhaskell)
     xeus_haskell_set_kernel_options(xhaskell)
     target_link_libraries(xhaskell PRIVATE xeus-zmq)
+    target_link_libraries(xhaskell PRIVATE mhs_repl_lib)
 endif()
 
+# xhaskell (emscripten / wasm)
 if(EMSCRIPTEN)
     include(WasmBuildOptions)
     find_package(xeus-lite REQUIRED)
     add_executable(xhaskell src/main_emscripten_kernel.cpp )
     target_link_libraries(xhaskell PRIVATE xeus-lite)
     target_compile_options(xhaskell PRIVATE -fPIC)
+    target_link_libraries(xhaskell PRIVATE mhs_repl_lib)
     XEUS_HASKELL_set_kernel_options(xhaskell)
     xeus_wasm_compile_options(xhaskell)
     xeus_wasm_link_options(xhaskell "web,worker")
 endif()
-
 
 # Installation
 # ============
@@ -361,16 +389,14 @@ if(EMSCRIPTEN)
             DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif ()
 
-include(MicroHs)
-fetch_and_build_microhs(MICROHS_BIN MICROHS_SRC_DIR)
-build_and_install_libmhs(${MICROHS_BIN} ${MICROHS_SRC_DIR})
-
+# MicroUnitTesting / test_mhs_repl
+# ================================
 if(NOT EMSCRIPTEN)
     include(MicroUnitTesting)
     enable_testing()
     fetch_ut()
-    add_executable(test_mhs_repl test/test_mhs_repl.cpp src/mhs_repl.cpp)
-    add_dependencies(test_mhs_repl mhs_obj)
+    add_executable(test_mhs_repl test/test_mhs_repl.cpp)
+    add_dependencies(test_mhs_repl mhs_repl_lib)
     target_include_directories(test_mhs_repl
         PUBLIC
             $<BUILD_INTERFACE:${XEUS_HASKELL_INCLUDE_DIR}>
@@ -378,6 +404,7 @@ if(NOT EMSCRIPTEN)
         PRIVATE
             ${MHS_INCLUDE_DIR})
     target_compile_definitions(test_mhs_repl PRIVATE MICROHS_RUNTIME_DIR="${MICROHS_SRC_DIR}")
-    target_link_libraries(test_mhs_repl PRIVATE ${MHS_OBJ} Boost::ut)
+    target_link_libraries(test_mhs_repl PRIVATE mhs_repl_lib Boost::ut)
     add_test(NAME test_mhs_repl COMMAND test_mhs_repl)
 endif()
+
