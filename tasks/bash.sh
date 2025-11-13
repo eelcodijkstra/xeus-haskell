@@ -1,2 +1,2 @@
 #!/bin/bash
-docker run --rm -it -v $(pwd):/work xeus-haskell bash
+docker run --rm -it -v $(pwd):/host xeus-haskell bash

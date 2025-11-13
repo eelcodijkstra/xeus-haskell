@@ -21,6 +21,6 @@ EOF
 RUN chmod +x /usr/local/bin/runs
 
 WORKDIR /work
-ENTRYPOINT ["/usr/local/bin/_entrypoint.sh", "runs", "cmake -B /tmp /work", "cmake --build /tmp", "cmake --install /tmp"]
+ENTRYPOINT ["/usr/local/bin/_entrypoint.sh", "runs", "cp -vR /host/* /work", "cmake -B /tmp /work", "cmake --build /tmp", "cmake --install /tmp"]
 CMD ["pytest"]
 
