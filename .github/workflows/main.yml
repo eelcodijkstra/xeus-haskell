@@ -30,6 +30,8 @@ jobs:
         uses: mamba-org/setup-micromamba@v1
         with:
           environment-file: environment-dev.yml
+          cache-environment: true
+          cache-downloads: true
 
       - name: Make build directory
         run: mkdir build
@@ -79,6 +81,8 @@ jobs:
         with:
           environment-file: environment-wasm-build.yml
           environment-name: xeus-haskell-wasm-build
+          cache-environment: true
+          cache-downloads: true
 
       - name: Build
         shell: bash -l {0}
