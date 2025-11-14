@@ -2,8 +2,8 @@
 #include <functional>
 #include <string>
 #include <string_view>
-#include <regex>
 #include <cstdio>
+#include <stdexcept>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -47,14 +47,6 @@ void ensure_microhs_environment()
 #else
     setenv("MHSDIR", microhs_runtime_dir, 1);
 #endif
-}
-
-bool is_definition(std::string_view code) {
-    std::string trimmed = std::regex_replace(std::string(code), std::regex(R"(--.*$)"), "");
-    static const std::regex re(
-        R"(^\s*(import|data|newtype|type|class|instance|foreign|infixl?|infixr|default)\b|(^|[^<>=:/!])=([^<>=:/!]|$)|::)"
-    );
-    return std::regex_search(trimmed, re);
 }
 
 std::string capture_stdout(std::function<void()> fn) {
@@ -202,40 +194,12 @@ MicroHsRepl::~MicroHsRepl() {
 }
 
 std::expected<std::string, std::string> MicroHsRepl::execute(std::string_view code) {
-    if (is_definition(code))
-        return define(code);
-    return run(code);
-}
-
-std::expected<std::string, std::string> MicroHsRepl::define(std::string_view code) {
-    std::string output = capture_stdout([&]() {
-        std::string code_str(code);
-        char* err = nullptr;
-        intptr_t rc = mhs_repl_define(
-            context,
-            const_cast<char*>(code_str.c_str()),
-            static_cast<uintptr_t>(code_str.size()),
-            reinterpret_cast<void*>(&err)
-        );
-
-        if (rc != 0 && err) {
-            std::string err_str(err);
-            mhs_repl_free_cstr(err);
-            throw std::runtime_error(err_str);
-        }
-        if (err) mhs_repl_free_cstr(err);
-    });
-
-    return output;
-}
-
-std::expected<std::string, std::string> MicroHsRepl::run(std::string_view code) {
     std::string output;
     try {
         output = capture_stdout([&]() {
             std::string code_str(code);
             char* err = nullptr;
-            intptr_t rc = mhs_repl_run(
+            intptr_t rc = mhs_repl_execute(
                 context,
                 const_cast<char*>(code_str.c_str()),
                 static_cast<uintptr_t>(code_str.size()),

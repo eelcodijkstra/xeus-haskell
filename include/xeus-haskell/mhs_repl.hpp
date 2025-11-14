@@ -1,5 +1,6 @@
 #pragma once
 #include <expected>
+#include <string>
 #include <string_view>
 #include "Repl_stub.h"
 
@@ -14,9 +15,6 @@ public:
 
 private:
     uintptr_t context = 0;
-    std::expected<std::string, std::string> define(std::string_view code);
-    std::expected<std::string, std::string> run(std::string_view code);
 };
 
 } // namespace xeus_haskell
-

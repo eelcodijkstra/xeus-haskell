@@ -5,7 +5,9 @@ module Repl (
   mhsReplFree,
   mhsReplDefine,
   mhsReplRun,
-  mhsReplFreeCString
+  mhsReplFreeCString,
+  mhsReplCanParseDefinition,
+  mhsReplCanParseExpression
 ) where
 
 import qualified Prelude ()
@@ -27,7 +29,7 @@ import MicroHs.Exp (Exp(Var))
 import MicroHs.Expr (ImpType(..))
 import MicroHs.Flags (Flags, defaultFlags)
 import MicroHs.Ident (Ident, mkIdent, qualIdent)
-import MicroHs.Parse (parse, pTopModule)
+import MicroHs.Parse (parse, pExprTop, pTopModule)
 import MicroHs.StateIO (runStateIO)
 import MicroHs.TypeCheck (TModule(..), tBindingsOf)
 import MicroHs.Translate (translateMap, translateWithMap)
@@ -89,7 +91,10 @@ foreign export ccall "mhs_repl_new"         mhsReplNew          :: IO ReplHandle
 foreign export ccall "mhs_repl_free"        mhsReplFree         :: ReplHandle -> IO ()
 foreign export ccall "mhs_repl_define"      mhsReplDefine       :: ReplHandle -> CString -> CSize -> Ptr CString -> IO CInt
 foreign export ccall "mhs_repl_run"         mhsReplRun          :: ReplHandle -> CString -> CSize -> Ptr CString -> IO CInt
+foreign export ccall "mhs_repl_execute"     mhsReplExecute      :: ReplHandle -> CString -> CSize -> Ptr CString -> IO CInt
 foreign export ccall "mhs_repl_free_cstr"   mhsReplFreeCString  :: CString -> IO ()
+foreign export ccall "mhs_repl_can_parse_definition" mhsReplCanParseDefinition :: CString -> CSize -> IO CInt
+foreign export ccall "mhs_repl_can_parse_expression" mhsReplCanParseExpression :: CString -> CSize -> IO CInt
 
 mhsReplNew :: IO ReplHandle
 mhsReplNew = newIORef =<< initialCtx >>= newStablePtr
@@ -208,6 +213,19 @@ mhsReplDefine = runReplAction replDefine
 mhsReplRun :: ReplHandle -> CString -> CSize -> Ptr CString -> IO CInt
 mhsReplRun = runReplAction replRun
 
+mhsReplExecute :: ReplHandle -> CString -> CSize -> Ptr CString -> IO CInt
+mhsReplExecute = runReplAction replExecute
+
+replExecute :: ReplCtx -> String -> IO (Either ReplError ReplCtx)
+replExecute ctx snippet =
+  let candidateDefs = rcDefs ctx ++ ensureTrailingNewline snippet
+  in
+    if canParseDefinition candidateDefs
+      then replDefine ctx snippet
+      else if canParseExpression snippet
+        then replRun ctx snippet
+        else pure (Left (ReplParseError "unable to parse snippet"))
+
 --------------------------------------------------------------------------------
 -- CString utilities
 --------------------------------------------------------------------------------
@@ -218,3 +236,28 @@ peekSource ptr len
   | len == 0       = peekCString ptr
   | otherwise      = peekCStringLen (ptr, fromIntegral len)
 
+--------------------------------------------------------------------------------
+-- Parser helpers
+--------------------------------------------------------------------------------
+
+canParseDefinition :: String -> Bool
+canParseDefinition snippet =
+  case parse pTopModule "<xhaskell-define>" (buildModule (ensureTrailingNewline snippet)) of
+    Right _ -> True
+    Left _  -> False
+
+canParseExpression :: String -> Bool
+canParseExpression snippet =
+  case parse pExprTop "<xhaskell-expr>" snippet of
+    Right _ -> True
+    Left _  -> False
+
+mhsReplCanParseDefinition :: CString -> CSize -> IO CInt
+mhsReplCanParseDefinition ptr len = do
+  code <- peekSource ptr len
+  pure $ if canParseDefinition code then 1 else 0
+
+mhsReplCanParseExpression :: CString -> CSize -> IO CInt
+mhsReplCanParseExpression ptr len = do
+  code <- peekSource ptr len
+  pure $ if canParseExpression code then 1 else 0
