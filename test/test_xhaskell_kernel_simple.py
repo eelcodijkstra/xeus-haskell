@@ -97,6 +97,24 @@ class XHaskellKernelTests(jupyter_kernel_test.KernelTests):
         except Empty as exc:
             self.skipTest(f"xhaskell kernel timed out while executing {code!r}: {exc}")
 
+    @staticmethod
+    def _extract_plain_text(
+        output_msgs: list[dict[str, Any]],
+        *,
+        msg_type: str = "execute_result",
+    ) -> str:
+        for msg in output_msgs:
+            if msg["msg_type"] != msg_type:
+                continue
+            if msg_type == "execute_result":
+                data = msg["content"].get("data", {})
+                text = data.get("text/plain")
+            else:
+                text = msg["content"].get("text")
+            if text:
+                return text
+        return ""
+
     def test_simple_expression_emits_execute_result(self) -> None:
         """Running a tiny arithmetic expression should yield execute_result."""
         self.flush_channels()
@@ -126,6 +144,30 @@ class XHaskellKernelTests(jupyter_kernel_test.KernelTests):
             error_msgs,
             f"No error output, saw {[msg['msg_type'] for msg in output_msgs]}",
         )
+
+    def test_definition_persists_across_cells(self) -> None:
+        """Definitions should persist in the REPL context across cells."""
+        self.flush_channels()
+        reply, outputs = self._execute_or_skip(code="square x = x * x")
+        self.assertEqual(reply["content"]["status"], "ok")
+        self.assertFalse(
+            any(msg["msg_type"] == "execute_result" for msg in outputs),
+            "Definition produced an unexpected execute_result payload",
+        )
+
+        self.flush_channels()
+        reply, outputs = self._execute_or_skip(code="square 7")
+        self.assertEqual(reply["content"]["status"], "ok")
+        payload = self._extract_plain_text(outputs)
+        self.assertIn("49", payload.strip())
+
+    def test_putstrln_emits_plaintext(self) -> None:
+        """putStrLn output should surface back to the notebook."""
+        self.flush_channels()
+        reply, outputs = self._execute_or_skip(code='putStrLn "hello from xeus"')
+        self.assertEqual(reply["content"]["status"], "ok")
+        payload = self._extract_plain_text(outputs)
+        self.assertIn("hello from xeus", payload)
 
 
 if __name__ == "__main__":
