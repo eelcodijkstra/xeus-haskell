@@ -6,12 +6,10 @@ USER root
 RUN chmod 777 -R /usr/local
 
 USER $MAMBA_USER
-COPY --chown=$MAMBA_USER:$MAMBA_USER ./environment.yml /tmp/environment.yml
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./environment-dev.yml /tmp/environment-dev.yml
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./environment-wasm-build.yml /tmp/environment-wasm-build.yml
 COPY --chown=$MAMBA_USER:$MAMBA_USER ./environment-wasm-host.yml /tmp/environment-wasm-host.yml
-RUN micromamba install -y -n base -f /tmp/environment.yml && \
-    micromamba install -y -n base -f /tmp/environment-dev.yml && \
+RUN micromamba install -y -n base -f /tmp/environment-dev.yml && \
     micromamba env create -y -f /tmp/environment-wasm-build.yml && \
     micromamba create -y -f /tmp/environment-wasm-host.yml --platform=emscripten-wasm32 && \
     micromamba clean --all --yes
