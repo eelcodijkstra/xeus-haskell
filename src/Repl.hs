@@ -15,24 +15,27 @@ import MHSPrelude
 
 import Control.Exception (try, SomeException, displayException)
 import Data.IORef
-import Data.List (intercalate, nub)
+import Data.List (foldl', intercalate, nub)
+import Data.Maybe (isJust)
 import Foreign.C.String (CString, peekCString, peekCStringLen, newCString)
 import Foreign.C.Types (CInt, CSize)
 import Foreign.Marshal.Alloc (free)
 import Foreign.Ptr (Ptr, nullPtr)
 import Foreign.StablePtr (StablePtr, newStablePtr, freeStablePtr, deRefStablePtr)
 import Foreign.Storable (poke)
+import MicroHs.Builtin (builtinMdl)
 import MicroHs.Compile (Cache, compileModuleP, compileToCombinators, emptyCache, getMhsDir)
 import MicroHs.CompileCache (cachedModules)
 import MicroHs.Desugar (LDef)
 import MicroHs.Exp (Exp(Var))
 import MicroHs.Expr (EModule(..), EDef(..), ImpType(..), patVars)
 import MicroHs.Flags (Flags, defaultFlags)
-import MicroHs.Ident (Ident, mkIdent, qualIdent)
+import MicroHs.Ident (Ident, mkIdent, qualIdent, unQualIdent)
+import qualified MicroHs.IdentMap as IMap
 import MicroHs.Parse (parse, pExprTop, pTopModule)
 import MicroHs.StateIO (runStateIO)
 import MicroHs.TypeCheck (TModule(..), tBindingsOf)
-import MicroHs.Translate (translateMap, translateWithMap)
+import MicroHs.Translate (TranslateMap, translateMap, translateWithMap)
 import Unsafe.Coerce (unsafeCoerce)
 
 --------------------------------------------------------------------------------
@@ -205,11 +208,20 @@ compileModule ctx src =
 runAction :: Cache -> TModule [LDef] -> Ident -> IO (Either ReplError ())
 runAction cache cmdl ident = do
   let defs      = tBindingsOf cmdl
-      baseMap   = translateMap $ concatMap tBindingsOf (cachedModules cache)
+      baseMap   = withBuiltinAliases $ translateMap $ concatMap tBindingsOf (cachedModules cache)
       actionAny = translateWithMap baseMap (defs, Var (qualIdent (tModuleName cmdl) ident))
       action    = unsafeCoerce actionAny :: IO ()
   action
   pure (Right ())
+
+withBuiltinAliases :: TranslateMap -> TranslateMap
+withBuiltinAliases mp = foldl' addAlias mp (IMap.toList mp)
+  where
+    addAlias acc (ident, val) =
+      let aliasIdent = qualIdent builtinMdl (unQualIdent ident)
+      in if aliasIdent == ident || isJust (IMap.lookup aliasIdent acc)
+           then acc
+           else IMap.insert aliasIdent val acc
 
 --------------------------------------------------------------------------------
 -- REPL logic

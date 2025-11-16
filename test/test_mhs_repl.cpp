@@ -72,6 +72,27 @@ int main() {
         expect_trim_eq(res.output, "5");
     };
 
+    "derived Typeable definitions stay usable"_test = [] {
+        auto& repl = repl_instance();
+        const auto type_def = R"(
+data XhTypeableRecord = XhTypeableRecord
+  { xhField :: Int
+  } deriving (Show, Typeable)
+)";
+        auto def_res = repl.execute(type_def);
+        expect(def_res.ok) << def_res.error;
+
+        // Regression test for B@._mkTyCon lookup: evaluating after the definition
+        // must continue to work.
+        auto eval_res = repl.execute("xhField (XhTypeableRecord 42)");
+        expect(eval_res.ok) << eval_res.error;
+        expect_trim_eq(eval_res.output, "42");
+
+        auto simple_res = repl.execute("20 + 22");
+        expect(simple_res.ok) << simple_res.error;
+        expect_trim_eq(simple_res.output, "42");
+    };
+
     "expressions evaluate"_test = [] {
         auto& repl = repl_instance();
         auto res = repl.execute("let (a, b) = (10, 20) in a + b");
