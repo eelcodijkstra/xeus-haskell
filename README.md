@@ -5,6 +5,9 @@
 `xeus-haskell` is a Jupyter kernel for haskell based on the native implementation of the
 Jupyter protocol [xeus](https://github.com/jupyter-xeus/xeus).
 
+<img width="800" height="500" alt="image" src="https://github.com/user-attachments/assets/c9efa18c-13bb-4c6e-a133-dac0281a66cf" />
+
+
 ## Quickstart
 
 ### For native JupyterLab
