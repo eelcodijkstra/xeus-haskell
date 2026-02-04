@@ -1,0 +1,3 @@
+Een plaatje:
+
+![[example.svg]]
